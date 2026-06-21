@@ -1,1 +1,1 @@
-# Sentinel--a-Fraud-Model-Risk-Copilot
+# Sentinel -A Fraud Model Risk Copilot
