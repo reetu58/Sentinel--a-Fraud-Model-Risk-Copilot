@@ -12,6 +12,7 @@
 [![Phase 1: streaming spine](https://img.shields.io/badge/phase%201-streaming%20spine%20✓-success.svg)](#-project-status)
 [![Phase 2: drift + fairness](https://img.shields.io/badge/phase%202-drift%20+%20fairness%20✓-success.svg)](#-project-status)
 [![Phase 3: agents + RAG](https://img.shields.io/badge/phase%203-agents%20+%20RAG%20✓-success.svg)](#-project-status)
+[![Phase 4: backend + dashboard](https://img.shields.io/badge/phase%204-backend%20+%20dashboard%20✓-success.svg)](#-project-status)
 [![Human-in-the-loop](https://img.shields.io/badge/actions-human%20approved-orange.svg)](#-design-principles)
 
 </div>
@@ -96,7 +97,7 @@ for what actually runs today.
 | **1 — Streaming spine** | Redpanda + Postgres via Compose · shared feature module · XGBoost baseline (PR-AUC, imbalance-aware) · producer → `transactions` · consumer → `scored-txns` with label | ✅ **Built** |
 | **2 — Daily drift, trend & fairness** | Frozen reference baseline · band-wise PSI + per-feature CSI + precision/recall/FPR · sustained-rise trend detector (early warning before RED) · BAF fairness audit (per-slice FPR + approval gaps) · Postgres schema + sink · daily CLI + Airflow DAG | ✅ **Built** |
 | **3 — Agents + RAG** | Haystack BM25 RAG over the governance corpus (`doc:section` citations) · LangGraph Monitor → Investigator → Drafter → human gate (interrupt-based pause) · thin Anthropic/OpenAI/offline LLM router · immutable append-only audit log (agent runs, memos, decisions) | ✅ **Built** |
-| **4 — API + dashboard** | FastAPI service, audit-log + approve/reject endpoints · React dashboard | ⬜ Planned |
+| **4 — Backend + dashboard** | FastAPI (health · queue · trigger · approve/reject · audit) over Postgres + the agent graph, with a SQLite checkpointer so the paused graph resumes across requests · React dashboard: health tiles, band-wise PSI chart, queue, copilot memo panel with Approve/Reject/Edit, audit trail (no client storage) | ✅ **Built** |
 | **5 — Deploy** | Docker → GCP Cloud Run, public URL | ⬜ Planned |
 
 ---
@@ -226,6 +227,38 @@ log** (`agent_runs` / `memos` / `decisions`, enforced by triggers). See
 
 ---
 
+## ⚡ Phase 4 — backend + dashboard (the loop, made usable)
+
+A FastAPI backend over the Phase 2 metrics and the Phase 3 agent graph, and a
+React dashboard that drives the whole human-in-the-loop. Runs in **demo mode**
+with no database and no API key:
+
+```bash
+# backend
+pip install -r pipeline/requirements.txt -r backend/requirements.txt
+SENTINEL_BACKEND_MODE=demo python -m uvicorn backend.app:app --port 8000
+
+# dashboard (separate terminal)
+cd frontend && npm install && npm run dev      # http://localhost:5173
+```
+
+The dashboard shows **health tiles** (PSI band, FPR, trend, worst fairness
+gap), a **band-wise PSI chart** (expected vs actual mass per score bin — the
+differentiator a single number hides), the **investigation queue**, a
+**copilot panel** rendering the four-part cited memo with **Approve / Reject /
+Edit**, and the **audit trail**. The loop: a RED breach appears → *Trigger
+investigation* → the graph pauses at the human gate with the drafted memo →
+*Approve* resumes the graph and appends the decision to the immutable audit
+log. **Nothing ships without that approval**, and all state is server-side
+(no `localStorage`/`sessionStorage`). API:
+
+| `GET /api/health` · `GET /api/investigations` · `POST /api/investigations` · `GET /api/investigations/{id}` · `POST …/approve` · `POST …/reject` · `GET /api/audit` |
+|---|
+
+See [`docs/runbooks/dashboard.md`](docs/runbooks/dashboard.md).
+
+---
+
 ## 🧭 Design principles
 
 These are enforced, not aspirational — see [`CLAUDE.md`](CLAUDE.md) for the full contract.
@@ -294,9 +327,14 @@ agents/
 rag/
   corpus.py          # chunk governance docs into stable doc:section ids
   retriever.py       # Haystack BM25 retrieval -> Citations
-backend/     # FastAPI service, audit log, human-gate endpoints                 [Phase 4]
-frontend/    # React dashboard                                                  [Phase 4]
-infra/       # Docker Compose, Postgres init.sql, Cloud Run deploy
+backend/
+  app.py             # FastAPI routes (health/queue/trigger/approve/reject/audit)
+  service.py         # agent-graph orchestration + SQLite checkpointer
+  repository.py      # Postgres + demo data access behind one interface
+frontend/
+  src/components/    # HealthTiles, PsiBandChart, AlertQueue, CopilotPanel, AuditTrail
+  src/App.jsx        # wires the loop; all state server-side
+infra/       # Docker Compose, Postgres init.sql + agents.sql, Cloud Run deploy
 docs/        # research brief, ADRs, runbooks (data, drift), governance notes
 data/        # gitignored — public datasets, locally derived
 models/      # gitignored — trained artifacts + baseline sidecar, locally derived

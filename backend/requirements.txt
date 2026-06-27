@@ -1,0 +1,8 @@
+# Sentinel backend (Phase 4) — FastAPI service + agent-graph orchestration.
+# Builds on pipeline/requirements.txt (pandas, langgraph, anthropic, ...).
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+# Persistent LangGraph checkpointer so the paused graph survives across the
+# (separate) trigger and approve/reject HTTP requests and process restarts.
+langgraph-checkpoint-sqlite>=2.0
